@@ -1,10 +1,13 @@
 package vuze.twofactorauthentication;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -12,6 +15,11 @@ import android.widget.Toast;
 import com.tozny.crypto.android.AesCbcWithIntegrity;
 
 import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -23,8 +31,7 @@ public class RegistrationActivity extends AppCompatActivity {
     EditText keyContainer;
 
     KeyDataSource keySource;
-    AesCbcWithIntegrity.SecretKeys keys;
-
+    String keys;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,21 +43,28 @@ public class RegistrationActivity extends AppCompatActivity {
 
         keySource = new KeyDataSource(this);
         keySource.open();
-        //Toast.makeText(this, "Generating new key", Toast.LENGTH_SHORT).show();
+
+        KeyGenerator kgen = null;
         try {
-            keys = AesCbcWithIntegrity.generateKey();
-            keySource.insertKey(keys.toString());
-            keyContainer.setText(keys.toString());
-        } catch (GeneralSecurityException e) {
+            kgen = KeyGenerator.getInstance("AES");
+            SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
+            kgen.init(128, sr);
+            SecretKey skey = kgen.generateKey();
+            keys = Base64.encodeToString(skey.getEncoded(), Base64.DEFAULT);
+        } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
+
+        keySource.insertKey(keys.toString());
+        keyContainer.setText(keys.toString());
+        Log.i("New Key", keys.toString());
     }
 
     @OnClick(R.id.submit_button)
-    public void closeRegistration(){
+    public void closeRegistration() {
         keySource.close();
+        Intent mainActivity = new Intent(this, MainActivity.class);
+        startActivity(mainActivity);
         finish();
     }
-
-
 }

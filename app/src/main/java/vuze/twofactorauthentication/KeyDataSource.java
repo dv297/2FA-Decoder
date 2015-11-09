@@ -53,7 +53,7 @@ public class KeyDataSource {
         return null;
     }
 
-    public boolean checkKeyPresent(){
+    public boolean isKeyPresent(){
         Cursor resultSet = database.rawQuery("Select * from " + MySQLiteHelper.KEY_TABLE, null);
         return resultSet.getCount() != 0;
     }
