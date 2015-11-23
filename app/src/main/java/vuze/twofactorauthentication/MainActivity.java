@@ -35,12 +35,9 @@ public class MainActivity extends AppCompatActivity {
     TextView valueTextview;
     @Bind(R.id.instructions)
     TextView instructions;
-
-    KeyDataSource keySource;
-    SecretKeySpec secretKey;
-    byte[] key;
-    String cipherType = "AES/CBC/PKCS5Padding";
-
+    KeyDataSource keySource; // SQLite database to hold persistent storage of encryption key
+    SecretKeySpec secretKey; // Java's object for secret key
+    public static final String cipherType = "AES/CBC/PKCS5Padding";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,12 +46,8 @@ public class MainActivity extends AppCompatActivity {
         ButterKnife.bind(this);
         TypefaceProvider.registerDefaultIconSets();
 
-        if (savedInstanceState != null) {
-            // Restore value of members from saved state
-            valueTextview.setText(savedInstanceState.getString("keyValue"));
-        }
-
-
+        // Key Source contains the encryption key
+        // KeyDataSource allows us to obtain this key
         keySource = new KeyDataSource(this);
         keySource.open();
         if (keySource.isKeyPresent()) {
@@ -73,14 +66,25 @@ public class MainActivity extends AppCompatActivity {
         super.onSaveInstanceState(savedInstanceState);
     }
 
-        @OnClick(R.id.scan_button)
+    // Initiate barcode scanning on Scan button click
+    @OnClick(R.id.scan_button)
     public void scanBarcode() {
             IntentIntegrator integrator = new IntentIntegrator(this);
             integrator.setBeepEnabled(false);
             integrator.initiateScan();
-        }
+    }
 
 
+    /**
+     * Response from the barcode scanner activity
+     * The individual parameters are brought to override Android's onActivityResult,
+     * however, the results are parsed in accordance with instructions for
+     * zxing-android-embedded
+     * @param requestCode N/A, app currently only has three activities and the only
+     *                    activity started from MainActivity is the barcode activity
+     * @param resultCode N/A, not used
+     * @param data N/A
+     */
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
@@ -91,14 +95,15 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Log.d(TAG, "Scanned");
                 String barcodeText = result.getContents();
+                // The barcode encodes two parts delimited by a colon:
+                // 1. The initialization vector
+                // 2. The cipher text
                 String[] barcodeElements = barcodeText.split(":");
                 String plainText = decrypt(barcodeElements[1], barcodeElements[0]);
                 if(plainText != null) {
-                    valueTextview.setText(plainText);
                     instructions.setText("Enter the following pin into the extension");
+                    valueTextview.setText(plainText);
                 }
-
-
             }
         } else {
             Log.d(TAG, "Error");
@@ -107,7 +112,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public String decrypt(String cipherText) {
-                try {
+        try {
             Cipher cipher = Cipher.getInstance(cipherType);
             cipher.init(Cipher.DECRYPT_MODE, secretKey);
             String plainText = (new String(cipher.doFinal(Base64.decode(cipherText, Base64.DEFAULT))));
@@ -118,8 +123,15 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
+    /**
+     * Decrypts the message sent from the extension
+     * @param cipherText The cipher text sent by the extension
+     * @param ivS The initialization vector used to prevent repeated plain texts from
+     *            returning the same cipher text
+     * @return returns the plain text or null if there is an error
+     */
     public String decrypt(String cipherText, String ivS) {
-        AlgorithmParameterSpec iv = new IvParameterSpec(Base64.decode(ivS, Base64.DEFAULT));
+        AlgorithmParameterSpec iv = new IvParameterSpec(hexStringToByteArray(ivS));
         try {
             Cipher cipher = Cipher.getInstance(cipherType);
             cipher.init(Cipher.DECRYPT_MODE, secretKey, iv);
@@ -131,32 +143,38 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    public String encrypt(String plainText) {
-        try {
-            Cipher cipher = Cipher.getInstance(cipherType);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-            valueTextview.setText(Base64.encodeToString(cipher.doFinal(plainText.getBytes("UTF-8")), Base64.DEFAULT));
-            Log.i("CIPHER TEXT: ", valueTextview.getText() + "");
-        } catch (Exception e) {
-            Toast.makeText(this, "Error while encrypting: " + e.toString(), Toast.LENGTH_SHORT).show();
-        }
-        return null;
-    }
-
+    /**
+     * Converts the string version of the key to a SecretKeySpec used for Java
+     * @param myKey The string representation of the key
+     */
     public void setKey(String myKey) {
         MessageDigest sha = null;
         try {
-            key = myKey.getBytes("UTF-8");
+
+            byte[] key = myKey.getBytes("UTF-8");
             sha = MessageDigest.getInstance("SHA-1");
             key = sha.digest(key);
             key = Arrays.copyOf(key, 16); // use only first 128 bit
             secretKey = new SecretKeySpec(Base64.decode(myKey, Base64.DEFAULT), "AES");
-
-
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Converts a string representation of hex to a usable byte array
+     * @param s String representation of hex
+     * @return Byte array representation of hex
+     */
+    public static byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                    + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
 }
